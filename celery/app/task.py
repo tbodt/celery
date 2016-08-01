@@ -35,7 +35,7 @@ __all__ = ['Context', 'Task']
 extract_exec_options = mattrgetter(
     'queue', 'routing_key', 'exchange', 'priority', 'expires',
     'serializer', 'delivery_mode', 'compression', 'time_limit',
-    'soft_time_limit', 'immediate', 'mandatory',  # imm+man is deprecated
+    'soft_time_limit', 'immediate', 'mandatory', 'uchain',  # imm+man is deprecated
 )
 
 # We take __repr__ very seriously around here ;)
@@ -266,6 +266,8 @@ class Task(object):
 
     #: Task request stack, the current request will be the topmost.
     request_stack = None
+
+    uchain = None
 
     #: Some may expect a request to exist even if the task has not been
     #: called.  This should probably be deprecated.

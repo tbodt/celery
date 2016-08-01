@@ -32,6 +32,7 @@ from celery import states, signals
 from celery._state import _task_stack
 from celery.app import set_default_app
 from celery.app.task import Task as BaseTask, Context
+from celery.canvas import Signature
 from celery.exceptions import Ignore, Reject, Retry, InvalidTaskError
 from celery.five import monotonic
 from celery.utils.log import get_logger
@@ -327,6 +328,7 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
         # for performance reasons, and because the function is so long
         # we want the main variables (I, and R) to stand out visually from the
         # the rest of the variables, so breaking PEP8 is worth it ;)
+
         R = I = T = Rstr = retval = state = None
         task_request = None
         time_start = monotonic()
@@ -374,6 +376,11 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                     raise
                 else:
                     try:
+                        if task_request.uchain is True:
+                            uchain = task_request
+                        else:
+                            uchain = task_request.uchain
+
                         # callback tasks must be applied before the result is
                         # stored, so that result.children is populated.
 
@@ -406,16 +413,26 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                                     (retval,), parent_id=uuid, root_id=root_id,
                                 )
 
-                        # execute first task in chain
-                        chain = task_request.chain
-                        if chain:
-                            signature(chain.pop(), app=app).apply_async(
-                                (retval,), chain=chain,
-                                parent_id=uuid, root_id=root_id,
-                            )
-                        mark_as_done(
-                            uuid, retval, task_request, publish_result,
-                        )
+                        if uchain and isinstance(retval, Signature):
+                            retval.apply_async((), uchain=uchain)
+                        else:
+                            # execute first task in chain
+                            if uchain and not task_request.chain:
+                                chain = uchain.chain
+                                if chain:
+                                    signature(chain.pop(), app=app).apply_async(
+                                        (retval,), chain=chain,
+                                        parent_id=uchain.id, root_id=root_id,
+                                    )
+                                mark_as_done(uchain.id, retval, uchain, publish_result)
+                            else:
+                                chain = task_request.chain
+                                if chain:
+                                    signature(chain.pop(), app=app).apply_async(
+                                        (retval,), chain=chain, uchain=uchain,
+                                        parent_id=task_request.id, root_id=root_id,
+                                    )
+                                mark_as_done(uuid, retval, task_request, publish_result)
                     except EncodeError as exc:
                         I, R, state, retval = on_error(task_request, exc, uuid)
                     else:
