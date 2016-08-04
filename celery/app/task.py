@@ -36,6 +36,7 @@ extract_exec_options = mattrgetter(
     'queue', 'routing_key', 'exchange', 'priority', 'expires',
     'serializer', 'delivery_mode', 'compression', 'time_limit',
     'soft_time_limit', 'immediate', 'mandatory',  # imm+man is deprecated
+    'uchain',
 )
 
 # We take __repr__ very seriously around here ;)
@@ -323,6 +324,8 @@ class Task(object):
 
     #: Default task expiry time.
     expires = None
+
+    uchain = False
 
     #: Some may expect a request to exist even if the task has not been
     #: called.  This should probably be deprecated.

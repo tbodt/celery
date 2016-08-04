@@ -270,7 +270,7 @@ def add_chain_task(app):
             return tasks, results
 
         def apply_async(self, args=(), kwargs={}, group_id=None, chord=None,
-                        task_id=None, link=None, link_error=None, **options):
+                        task_id=None, link=None, link_error=None, uchain=None, **options):
             if self.app.conf.CELERY_ALWAYS_EAGER:
                 return self.apply(args, kwargs, **options)
             options.pop('publisher', None)
@@ -283,6 +283,8 @@ def add_chain_task(app):
             if task_id:
                 tasks[-1].set(task_id=task_id)
                 result = tasks[-1].type.AsyncResult(task_id)
+            if uchain:
+                tasks[-1].set(uchain=uchain)
             # make sure we can do a link() and link_error() on a chain object.
             if link:
                 tasks[-1].set(link=link)
@@ -349,7 +351,7 @@ def add_chord_task(app):
             )
 
         def apply_async(self, args=(), kwargs={}, task_id=None,
-                        group_id=None, chord=None, **options):
+                        group_id=None, chord=None, uchain=None, **options):
             app = self.app
             if app.conf.CELERY_ALWAYS_EAGER:
                 return self.apply(args, kwargs, **options)
@@ -362,6 +364,8 @@ def add_chord_task(app):
                 body.options['chord'] = chord
             if group_id is not None:
                 body.options['group_id'] = group_id
+            if uchain is not None:
+                body.options['uchain'] = uchain
             [body.link(s) for s in options.pop('link', [])]
             [body.link_error(s) for s in options.pop('link_error', [])]
             body_result = body.freeze(task_id)

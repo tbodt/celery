@@ -30,6 +30,7 @@ from celery import states, signals
 from celery._state import _task_stack
 from celery.app import set_default_app
 from celery.app.task import Task as BaseTask, Context
+from celery.canvas import Signature
 from celery.exceptions import Ignore, Reject, Retry
 from celery.utils.log import get_logger
 from celery.utils.objects import mro_lookup
@@ -74,7 +75,7 @@ class TraceInfo(object):
         self.state = state
         self.retval = retval
 
-    def handle_error_state(self, task, eager=False):
+    def handle_error_state(self, task, request, eager=False):
         store_errors = not eager
         if task.ignore_result:
             store_errors = task.store_errors_even_if_ignored
@@ -82,13 +83,12 @@ class TraceInfo(object):
         return {
             RETRY: self.handle_retry,
             FAILURE: self.handle_failure,
-        }[self.state](task, store_errors=store_errors)
+        }[self.state](task, request, store_errors=store_errors)
 
-    def handle_retry(self, task, store_errors=True):
+    def handle_retry(self, task, req, store_errors=True):
         """Handle retry exception."""
         # the exception raised is the Retry semi-predicate,
         # and it's exc' attribute is the original exception raised (if any).
-        req = task.request
         type_, _, tb = sys.exc_info()
         try:
             reason = self.retval
@@ -104,9 +104,8 @@ class TraceInfo(object):
         finally:
             del(tb)
 
-    def handle_failure(self, task, store_errors=True):
+    def handle_failure(self, task, req, store_errors=True):
         """Handle exception."""
-        req = task.request
         type_, _, tb = sys.exc_info()
         try:
             exc = self.retval
@@ -198,7 +197,7 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
         if propagate:
             raise
         I = Info(state, exc)
-        R = I.handle_error_state(task, eager=eager)
+        R = I.handle_error_state(task, request, eager=eager)
         if call_errbacks:
             group(
                 [signature(errback, app=app)
@@ -235,6 +234,13 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                         request=task_request,
                     )
 
+                uchain = task_request.uchain
+                if uchain is True:
+                    uchain = task_request
+                if uchain:
+                    task_request = uchain
+                    uuid = task_request.id
+
                 # -*- TRACE -*-
                 try:
                     R = retval = fun(*args, **kwargs)
@@ -254,6 +260,11 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                 except BaseException as exc:
                     raise
                 else:
+                    if uchain and isinstance(retval, Signature):
+                        retval.apply_async((), uchain=uchain)
+                        # A return is safe here, because the important cleanup is in a finally.
+                        return R, I
+
                     try:
                         # callback tasks must be applied before the result is
                         # stored, so that result.children is populated.
@@ -262,9 +273,9 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                         # separately, so need to call them separately
                         # so that the trail's not added multiple times :(
                         # (Issue #1936)
-                        callbacks = task.request.callbacks
+                        callbacks = task_request.callbacks
                         if callbacks:
-                            if len(task.request.callbacks) > 1:
+                            if len(task_request.callbacks) > 1:
                                 sigs, groups = [], []
                                 for sig in callbacks:
                                     sig = signature(sig, app=app)
@@ -293,7 +304,7 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                 # -* POST *-
                 if state not in IGNORE_STATES:
                     if task_request.chord:
-                        on_chord_part_return(task, state, R)
+                        on_chord_part_return(task_request, state, R)
                     if task_after_return:
                         task_after_return(
                             state, retval, uuid, args, kwargs, None,

@@ -217,7 +217,7 @@ class TaskProducer(Producer):
                      callbacks=None, errbacks=None, routing_key=None,
                      serializer=None, delivery_mode=None, compression=None,
                      reply_to=None, time_limit=None, soft_time_limit=None,
-                     declare=None, headers=None,
+                     declare=None, headers=None, uchain=None,
                      send_before_publish=signals.before_task_publish.send,
                      before_receivers=signals.before_task_publish.receivers,
                      send_after_publish=signals.after_task_publish.send,
@@ -284,6 +284,7 @@ class TaskProducer(Producer):
             'timelimit': (time_limit, soft_time_limit),
             'taskset': group_id or taskset_id,
             'chord': chord,
+            'uchain': uchain,
         }
 
         if before_receivers:

@@ -29,6 +29,7 @@ from kombu.utils.url import maybe_sanitize_url
 from celery import states
 from celery import current_app, maybe_signature
 from celery.app import current_task
+from celery.app.task import Task
 from celery.exceptions import ChordError, TimeoutError, TaskRevokedError
 from celery.five import items
 from celery.result import (
@@ -537,20 +538,23 @@ class KeyValueStoreBackend(BaseBackend):
         self.save_group(group_id, self.app.GroupResult(group_id, result))
         return header(*partial_args, task_id=group_id)
 
-    def on_chord_part_return(self, task, state, result, propagate=None):
+    def on_chord_part_return(self, request, state, result, propagate=None):
+        if isinstance(request, Task):
+            request = request.request
+
         if not self.implements_incr:
             return
         app = self.app
         if propagate is None:
             propagate = app.conf.CELERY_CHORD_PROPAGATES
-        gid = task.request.group
+        gid = request.group
         if not gid:
             return
         key = self.get_key_for_chord(gid)
         try:
-            deps = GroupResult.restore(gid, backend=task.backend)
+            deps = GroupResult.restore(gid, backend=self)
         except Exception as exc:
-            callback = maybe_signature(task.request.chord, app=app)
+            callback = maybe_signature(request.chord, app=app)
             logger.error('Chord %r raised: %r', gid, exc, exc_info=1)
             return self.chord_error_from_stack(
                 callback,
@@ -560,7 +564,7 @@ class KeyValueStoreBackend(BaseBackend):
             try:
                 raise ValueError(gid)
             except ValueError as exc:
-                callback = maybe_signature(task.request.chord, app=app)
+                callback = maybe_signature(request.chord, app=app)
                 logger.error('Chord callback %r raised: %r', gid, exc,
                              exc_info=1)
                 return self.chord_error_from_stack(
@@ -573,7 +577,7 @@ class KeyValueStoreBackend(BaseBackend):
             logger.warning('Chord counter incremented too many times for %r',
                            gid)
         elif val == size:
-            callback = maybe_signature(task.request.chord, app=app)
+            callback = maybe_signature(request.chord, app=app)
             j = deps.join_native if deps.supports_native_join else deps.join
             try:
                 with allow_join_result():
