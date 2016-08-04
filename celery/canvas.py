@@ -1012,6 +1012,9 @@ class chord(Signature):
         options = dict(self.options, **options) if options else self.options
         if options:
             options.pop('task_id', None)
+            uchain = options.pop('uchain', None)
+            if uchain:
+                body.options['uchain'] = uchain
             body.options.update(options)
 
         results = header.freeze(
