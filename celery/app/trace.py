@@ -32,7 +32,6 @@ from celery import states, signals
 from celery._state import _task_stack
 from celery.app import set_default_app
 from celery.app.task import Task as BaseTask, Context
-from celery.canvas import Signature
 from celery.exceptions import Ignore, Reject, Retry, InvalidTaskError
 from celery.five import monotonic
 from celery.utils.log import get_logger
@@ -328,7 +327,6 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
         # for performance reasons, and because the function is so long
         # we want the main variables (I, and R) to stand out visually from the
         # the rest of the variables, so breaking PEP8 is worth it ;)
-
         R = I = T = Rstr = retval = state = None
         task_request = None
         time_start = monotonic()
@@ -376,75 +374,71 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                     raise
                 else:
                     try:
-                        if task_request.uchain is True:
+                        uchain = task_request.uchain
+                        if uchain is True:
                             uchain = task_request
-                        else:
-                            uchain = task_request.uchain
 
-                        # callback tasks must be applied before the result is
-                        # stored, so that result.children is populated.
-
-                        # groups are called inline and will store trail
-                        # separately, so need to call them separately
-                        # so that the trail's not added multiple times :(
-                        # (Issue #1936)
-                        callbacks = task.request.callbacks
-                        if callbacks:
-                            if len(task.request.callbacks) > 1:
-                                sigs, groups = [], []
-                                for sig in callbacks:
-                                    sig = signature(sig, app=app)
-                                    if isinstance(sig, group):
-                                        groups.append(sig)
-                                    else:
-                                        sigs.append(sig)
-                                for group_ in groups:
-                                    group_.apply_async(
-                                        (retval,),
-                                        parent_id=uuid, root_id=root_id,
-                                    )
-                                if sigs:
-                                    group(sigs, app=app).apply_async(
-                                        (retval,),
-                                        parent_id=uuid, root_id=root_id,
-                                    )
-                            else:
-                                signature(callbacks[0], app=app).apply_async(
-                                    (retval,), parent_id=uuid, root_id=root_id,
-                                )
-
-                        if uchain and isinstance(retval, Signature):
+                        if task_request.uchain and isinstance(retval, Signature):
                             retval.apply_async((), uchain=uchain)
                         else:
+                            if uchain:
+                                task_request = uchain
+                            # callback tasks must be applied before the result is
+                            # stored, so that result.children is populated.
+
+                            # groups are called inline and will store trail
+                            # separately, so need to call them separately
+                            # so that the trail's not added multiple times :(
+                            # (Issue #1936)
+                            callbacks = task.request.callbacks
+                            if callbacks:
+                                if uchain:
+                                    raise Exception('callbacks on uchains don\'t really work')
+                                if len(task.request.callbacks) > 1:
+                                    sigs, groups = [], []
+                                    for sig in callbacks:
+                                        sig = signature(sig, app=app)
+                                        if isinstance(sig, group):
+                                            groups.append(sig)
+                                        else:
+                                            sigs.append(sig)
+                                    for group_ in groups:
+                                        group_.apply_async(
+                                            (retval,),
+                                            parent_id=task_request.id, root_id=root_id,
+                                        )
+                                    if sigs:
+                                        group(sigs, app=app).apply_async(
+                                            (retval,),
+                                            parent_id=task_request.id, root_id=root_id,
+                                        )
+                                else:
+                                    signature(callbacks[0], app=app).apply_async(
+                                        (retval,), parent_id=task_request.id, root_id=root_id,
+                                    )
+
                             # execute first task in chain
-                            if uchain and not task_request.chain:
-                                chain = uchain.chain
-                                if chain:
-                                    signature(chain.pop(), app=app).apply_async(
-                                        (retval,), chain=chain,
-                                        parent_id=uchain.id, root_id=root_id,
-                                    )
-                                mark_as_done(uchain.id, retval, uchain, publish_result)
-                            else:
-                                chain = task_request.chain
-                                if chain:
-                                    signature(chain.pop(), app=app).apply_async(
-                                        (retval,), chain=chain, uchain=uchain,
-                                        parent_id=task_request.id, root_id=root_id,
-                                    )
-                                mark_as_done(uuid, retval, task_request, publish_result)
+                            chain = task_request.chain
+                            if chain:
+                                signature(chain.pop(), app=app).apply_async(
+                                    (retval,), chain=chain,
+                                    parent_id=task_request.id, root_id=root_id,
+                                )
+                            mark_as_done(
+                                task_request.id, retval, task_request, publish_result,
+                            )
                     except EncodeError as exc:
-                        I, R, state, retval = on_error(task_request, exc, uuid)
+                        I, R, state, retval = on_error(task_request, exc, task_request.id)
                     else:
                         if task_on_success:
-                            task_on_success(retval, uuid, args, kwargs)
+                            task_on_success(retval, task_request.id, args, kwargs)
                         if success_receivers:
                             send_success(sender=task, result=retval)
                         if _does_info:
                             T = monotonic() - time_start
                             Rstr = saferepr(R, resultrepr_maxsize)
                             info(LOG_SUCCESS, {
-                                'id': uuid, 'name': name,
+                                'id': task_request.id, 'name': name,
                                 'return_value': Rstr, 'runtime': T,
                             })
 
@@ -452,7 +446,7 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                 if state not in IGNORE_STATES:
                     if task_after_return:
                         task_after_return(
-                            state, retval, uuid, args, kwargs, None,
+                            state, retval, task_request.id, args, kwargs, None,
                         )
             finally:
                 try:

@@ -223,7 +223,7 @@ class Signature(dict):
     partial = clone
 
     def freeze(self, _id=None, group_id=None, chord=None,
-               root_id=None, parent_id=None):
+               root_id=None, parent_id=None, uchain=None):
         opts = self.options
         try:
             tid = opts['task_id']
@@ -239,6 +239,8 @@ class Signature(dict):
             opts['group_id'] = group_id
         if chord:
             opts['chord'] = chord
+        if uchain:
+            opts['uchain'] = uchain
         return self.AsyncResult(tid)
     _freeze = freeze
 
@@ -448,7 +450,7 @@ class chain(Signature):
 
     def run(self, args=(), kwargs={}, group_id=None, chord=None,
             task_id=None, link=None, link_error=None, publisher=None,
-            producer=None, root_id=None, parent_id=None, app=None, **options):
+            producer=None, root_id=None, parent_id=None, app=None, uchain=None, **options):
         app = app or self.app
         use_link = self._use_link
         if use_link is None and app.conf.task_protocol == 1:
@@ -461,7 +463,7 @@ class chain(Signature):
         else:
             tasks, results = self.prepare_steps(
                 args, self.tasks, root_id, parent_id, link_error, app,
-                task_id, group_id, chord,
+                task_id, group_id, chord, uchain,
             )
 
         if results:
@@ -473,17 +475,17 @@ class chain(Signature):
             return results[0]
 
     def freeze(self, _id=None, group_id=None, chord=None,
-               root_id=None, parent_id=None):
+               root_id=None, parent_id=None, uchain=None):
         _, results = self._frozen = self.prepare_steps(
             self.args, self.tasks, root_id, parent_id, None,
-            self.app, _id, group_id, chord, clone=False,
+            self.app, _id, group_id, chord, clone=False, uchain=uchain,
         )
         return results[0]
 
     def prepare_steps(self, args, tasks,
                       root_id=None, parent_id=None, link_error=None, app=None,
                       last_task_id=None, group_id=None, chord_body=None,
-                      clone=True, from_dict=Signature.from_dict):
+                      clone=True, uchain=None, from_dict=Signature.from_dict):
         app = app or self.app
         # use chain message field for protocol 2 and later.
         # this avoids pickle blowing the stack on the recursion
@@ -541,7 +543,7 @@ class chain(Signature):
                 # chord callback for the last task.
                 res = task.freeze(
                     last_task_id,
-                    root_id=root_id, group_id=group_id, chord=chord_body,
+                    root_id=root_id, group_id=group_id, chord=chord_body, uchain=uchain
                 )
             else:
                 res = task.freeze(root_id=root_id)
