@@ -263,8 +263,9 @@ def build_tracer(name, task, loader=None, hostname=None, store_errors=True,
                     if uchain and isinstance(retval, Signature):
                         # If there's an errback on the uchain, it should be
                         # triggered by an error anywhere on the uchain.
-                        for errback in uchain.errbacks:
-                            retval.link_error(errback)
+                        if uchain.errbacks:
+                            for errback in uchain.errbacks:
+                                retval.link_error(errback)
                         retval.apply_async((), uchain=uchain)
                         # A return is safe here, because the important cleanup
                         # is in a finally.
