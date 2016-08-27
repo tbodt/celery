@@ -657,6 +657,12 @@ class chord(Signature):
         for task in self.tasks:
             task.set_immutable(immutable)
 
+    def skew(self, start=1.0, stop=None, step=1.0):
+        it = fxrange(start, stop, step, repeatlast=True)
+        for task in self.tasks:
+            task.set(countdown=next(it))
+        return self
+
     def __repr__(self):
         if self.body:
             return self.body.reprcall(self.tasks)
