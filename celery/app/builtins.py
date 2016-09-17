@@ -269,7 +269,8 @@ def add_chain_task(app):
             return tasks, results
 
         def apply_async(self, args=(), kwargs={}, group_id=None, chord=None,
-                        task_id=None, link=None, link_error=None, **options):
+                        task_id=None, link=None, link_error=None, headers=None,
+                        **options):
             if self.app.conf.CELERY_ALWAYS_EAGER:
                 return self.apply(args, kwargs, **options)
             options.pop('publisher', None)
@@ -289,6 +290,9 @@ def add_chain_task(app):
             if link_error:
                 for task in tasks:
                     task.set(link_error=link_error)
+            if headers:
+                for task in tasks:
+                    task.set(headers=headers)
             tasks[0].apply_async(**options)
             return result
 
