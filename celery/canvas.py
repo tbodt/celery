@@ -666,6 +666,16 @@ class chord(Signature):
         self.body.link_error(errback)
         return errback
 
+    def set(self, immutable=None, headers=None, **options):
+        if immutable is not None:
+            self.set_immutable(immutable)
+        if headers is not None:
+            for task in self.tasks:
+                task.set(headers=headers)
+            self.body.set(headers=headers)
+        self.body.set(**options)
+        return self
+
     def set_immutable(self, immutable):
         # changes mutability of header only, not callback.
         for task in self.tasks:
