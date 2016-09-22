@@ -26,7 +26,7 @@ class MapRoute(object):
     def __init__(self, map):
         self.map = map
 
-    def route_for_task(self, task, *args, **kwargs):
+    def route_for_task(self, task, options, *args, **kwargs):
         try:
             return dict(self.map[task])
         except KeyError:
@@ -47,7 +47,7 @@ class Router(object):
     def route(self, options, task, args=(), kwargs={}):
         options = self.expand_destination(options)  # expands 'queue'
         if self.routes:
-            route = self.lookup_route(task, args, kwargs)
+            route = self.lookup_route(task, options, args, kwargs)
             if route:  # expands 'queue' in route.
                 return lpmerge(self.expand_destination(route), options)
         if 'queue' not in options:
@@ -74,8 +74,8 @@ class Router(object):
             route['queue'] = Q
         return route
 
-    def lookup_route(self, task, args=None, kwargs=None):
-        return _first_route(self.routes, task, args, kwargs)
+    def lookup_route(self, task, options, args=None, kwargs=None):
+        return _first_route(self.routes, task, options, args, kwargs)
 
 
 def prepare(routes):
